@@ -1,10 +1,8 @@
-import datetime
-import hashlib
-import json
-from flask import Flask, jsonify, escape, request
-from werkzeug.wrappers import response
+import datetime, hashlib, json, random, sys
+import multiprocessing as mp
 
-difficulty = 4
+core_num = 16
+difficulty = 5
 
 class pow_data:
     def __init__(self):
@@ -30,16 +28,24 @@ class pow_data:
         encoded_block = json.dumps(block, sort_keys = True).encode()
         return hashlib.sha256(encoded_block).hexdigest()
 
-    def proof_of_work(self, previous_proof):
-        new_proof = 1
+    def proof_of_work(self, previous_proof, i, quit, foundit, return_dict):
+        new_proof = random.randint(1, sys.maxsize)
+        print(new_proof)
         check_proof = False
-        while check_proof is False:
-            hash_operation = hashlib.sha256(str(new_proof**2 - previous_proof**2).encode()).hexdigest()
-            if hash_operation[:difficulty] == '0'*difficulty:
-                check_proof = True
-            else:
-                new_proof += 1
-        return new_proof, hash_operation
+        while not quit.is_set():
+            while check_proof is False:
+                hash_operation = hashlib.sha256(str(new_proof**2 - previous_proof**2).encode()).hexdigest()
+                if hash_operation[:difficulty] == '0'*difficulty:
+                    check_proof = True
+                    return_dict['new_proof'] = new_proof
+                    return_dict['hash_operation'] = hash_operation
+                else:
+                    new_proof = random.randint(1, sys.maxsize)
+                    # new_proof += 1
+            foundit.set()
+        print(hash_operation)
+        
+        # return new_proof, hash_operation
 
     def is_chain_valid(self, chain):
         previous_block = chain[0]
@@ -63,9 +69,23 @@ def mine_block():
     previous_block = blockchain.get_previous_block()
     previous_proof = previous_block['proof']
     previous_hash = blockchain.hash(previous_block)
-    
-    proof, proof_ans = blockchain.proof_of_work(previous_proof)
 
+    manager = mp.Manager()
+    return_dict = manager.dict()
+    jobs = []
+
+    quit = mp.Event()
+    foundit = mp.Event()
+    for i in range(core_num):
+        p = mp.Process(target=blockchain.proof_of_work, args=(previous_proof, i, quit, foundit, return_dict))
+        jobs.append(p)
+        p.start()
+    foundit.wait()
+    quit.set()
+
+    print('>>>create block')
+    proof = return_dict['new_proof']
+    proof_ans = return_dict['hash_operation']
     block = blockchain.create_block(proof, proof_ans, previous_hash)
     
     response = {"message": 'Successfully mined a block :)',
