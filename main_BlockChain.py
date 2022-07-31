@@ -1,7 +1,7 @@
 import datetime, hashlib, json, random, sys
 import multiprocessing as mp
 
-core_num = 16
+core_num = 4
 difficulty = 5
 
 class pow_data:
